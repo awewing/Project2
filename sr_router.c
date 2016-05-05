@@ -26,6 +26,7 @@ void handleARPPacket(uint8_t * packet, unsigned char* hwAddr, unsigned char* buf
 void print_bytes(const void *object, size_t size);
 void add32BitToMsg(unsigned char *msg, int32_t num, int index);
 void add16BitToMsg(unsigned char *msg, int16_t num, int index);
+uint16_t cksumAlg(uint16_t *buf, int count);
 
 /*--------------------------------------------------------------------- 
  * Method: sr_init(void)
@@ -78,7 +79,7 @@ void sr_handlepacket(struct sr_instance* sr,
     unsigned char dAddress[6 * sizeof(uint8_t)];
     unsigned char sAddress[6 * sizeof(uint8_t)];
     uint16_t type = -1;
-    print_bytes(packet, len);
+    //print_bytes(packet, len);
     //printf("Whole packet %x")
     parseEthernetHeader(packet, dAddress, sAddress, &type);
     if (type == 2054){ //IS type ARP
@@ -89,29 +90,65 @@ void sr_handlepacket(struct sr_instance* sr,
         offset = 0;
         memcpy(&replyMsg, (void *)sAddress, 6 *sizeof(uint8_t));
         offset = offset + 6 *sizeof(uint8_t);
-        //add32BitToMsg(replyMsg, iface->ip, offset);
         memcpy(&replyMsg[offset], (void *)iface->addr, 6 * sizeof(uint8_t));
         offset = offset + 6 *sizeof(uint8_t);
         memcpy(&replyMsg[offset], (void *) packet + offset, 2 * sizeof(uint8_t));
         offset = offset + 2 *sizeof(uint8_t);
         memcpy(&replyMsg[offset], replyARP, 28);
-        print_bytes(replyMsg, 42);
+        //print_bytes(replyMsg, 42);
         sr_send_packet(sr, replyMsg, 42, interface);
     }
-    
-    
-    
-
-
-    
-    //unsigned char replyARP[sizeof(uint8_t) * len];
-    //populateReplyARP(packet, )
-
+    else if (type == 2048){//Type is IPv4
+        int dropPacketFlag = 0;
+        //Is IP destination the same as the router?
+        int Bit32Size = sizeof(uint32_t);
+        unsigned char ipDest[Bit32Size];
+        memset(ipDest, '\0', Bit32Size);
+        memcpy(&ipDest[0], (void *) packet + sizeof(uint8_t) * 30, Bit32Size);
+        print_bytes(ipDest, Bit32Size);
+        printf("%x\n",(iface->ip));
+        //if (ipDest == iface->ip){
+        //    dropPacketFlag = 1;
+        //}
+        //Check and decrement the TTL
+        char ttlTemp[sizeof(uint8_t) * 1];
+        memcpy(ttlTemp, (void *)packet + sizeof(uint8_t) * 22, sizeof(uint8_t) * 1);
+        uint16_t ttl = ntohs(*(uint16_t *) ttlTemp);
+        //uint16_t ttl = *(uint16_t *) ttlTemp;
+        printf("TTL: %d\n", ttl);
+        ttl = ttl - 1;
+        if (ttl < 1){
+            dropPacketFlag = 1;
+        }
+        else{
+            // TODO: add 8bitToMsg
+            // add16BitToMsg(packet, ttl, sizeof(uint8_t) * 22);
+        }
+        //update IP checksum field
+        uint16_t buf[12];
+        memset(buf, 0, sizeof(uint16_t) * 12);
+        memcpy(buf, (void *)packet, (sizeof(uint16_t) * 12) - sizeof(uint8_t));
+        memset(&buf[5], 0, sizeof(uint16_t) );
+        uint16_t cksum = cksumAlg(buf, 12);
+        add16BitToMsg(packet, cksum, sizeof(uint8_t) * 10);
+    }
+    //Check ARP cache entries each time to see if they are over 15 seconds old.
     printf("*** -> Received packet of length %d \n",len);
-    
-
 
 }/* end sr_ForwardPacket */
+
+uint16_t cksumAlg(uint16_t *buf, int count) {
+    register uint32_t sum = 0;
+
+    while(count--) {
+        sum += *buf++;
+        if (sum & 0xFFFF00000) {
+            sum &= 0xFFFF;
+            sum++;
+        }
+    }
+    return ~(sum & 0xFFFF);
+}
 
 void parseEthernetHeader(uint8_t * packet, unsigned char* dAddress, unsigned char* sAddress, uint16_t* type){
     int offset = 0;
@@ -122,7 +159,6 @@ void parseEthernetHeader(uint8_t * packet, unsigned char* dAddress, unsigned cha
     char tempType[sizeof(uint8_t) * 2];
     memcpy(tempType, (void *)packet + offset, sizeof(uint8_t) * 2);
     *type = ntohs(*(int16_t *) tempType);
-    //printf("Type: %d\n", *type);
 }
 
 void handleARPPacket(uint8_t * packet, unsigned char* hwAddr, unsigned char* buffer) {
@@ -164,19 +200,6 @@ void handleARPPacket(uint8_t * packet, unsigned char* hwAddr, unsigned char* buf
     
     memcpy(dpAddr, (void *) packet + offset, 4 * sizeof(uint8_t));
     offset += 4 * sizeof(uint8_t);
-    
-//    print_bytes(packet, 28);
-//    printf("Compare to:\n");
-
-//    print_bytes(&hardwareType, 2);
-//    print_bytes(&protocolType, 2);
-//    print_bytes(&hardwareAddr, 1);
-//    print_bytes(&protocolAddr, 1);
-//    print_bytes(&operationCode, 2);
-//    print_bytes(&shAddr, 6);
-//    print_bytes(&spAddr, 4);
-//    print_bytes(&dhAddr, 6);
-//    print_bytes(&dpAddr, 4);
     
     if (ntohs(*(int16_t *)operationCode) == 1) {
         // The Message is a request, create reply
