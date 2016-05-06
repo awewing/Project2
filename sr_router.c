@@ -27,6 +27,9 @@ void print_bytes(const void *object, size_t size);
 void add32BitToMsg(unsigned char *msg, int32_t num, int index);
 void add16BitToMsg(unsigned char *msg, int16_t num, int index);
 uint16_t cksumAlg(uint16_t *buf, int count);
+uint8_t getIPHeaderLength(uint8_t * ipPacket);
+void updateChkSum(uint8_t ipHL, uint8_t *ipHeader);
+void add8BitToMsg(unsigned char *msg, int8_t num, int index);
 
 /*--------------------------------------------------------------------- 
  * Method: sr_init(void)
@@ -100,6 +103,7 @@ void sr_handlepacket(struct sr_instance* sr,
     }
     else if (type == 2048){//Type is IPv4
         int dropPacketFlag = 0;
+        uint8_t * ipPacket = packet + sizeof(uint8_t) * 14;
         //Is IP destination the same as the router?
         int Bit32Size = sizeof(uint32_t);
         unsigned char ipDest[Bit32Size];
@@ -111,38 +115,62 @@ void sr_handlepacket(struct sr_instance* sr,
         //    dropPacketFlag = 1;
         //}
         //Check and decrement the TTL
-        char ttlTemp[sizeof(uint8_t) * 1];
-        memcpy(ttlTemp, (void *)packet + sizeof(uint8_t) * 22, sizeof(uint8_t) * 1);
-        uint16_t ttl = ntohs(*(uint16_t *) ttlTemp);
-        //uint16_t ttl = *(uint16_t *) ttlTemp;
+        char ttlTemp[sizeof(uint8_t)];
+        memcpy(ttlTemp, (void *)packet + sizeof(uint8_t) * 22, sizeof(uint8_t));
+        //uint8_t ttl = ntohs(*(uint8_t *) ttlTemp);
+        uint8_t ttl = *(uint8_t *) ttlTemp;
         printf("TTL: %d\n", ttl);
         ttl = ttl - 1;
         if (ttl < 1){
             dropPacketFlag = 1;
         }
         else{
-            // TODO: add 8bitToMsg
-            // add16BitToMsg(packet, ttl, sizeof(uint8_t) * 22);
+            add8BitToMsg(packet, ttl, sizeof(uint8_t) * 22);
         }
         //update IP checksum field
-        uint16_t buf[12];
-        memset(buf, 0, sizeof(uint16_t) * 12);
-        memcpy(buf, (void *)packet, (sizeof(uint16_t) * 12) - sizeof(uint8_t));
-        memset(&buf[5], 0, sizeof(uint16_t) );
-        uint16_t cksum = cksumAlg(buf, 12);
-        add16BitToMsg(packet, cksum, sizeof(uint8_t) * 10);
+        //Get IP header length
+        uint8_t ipHL = getIPHeaderLength(ipPacket);
+        printf("IPHL %d\n", ipHL);
+        //End of IP header length
+
+        //Checking that cksum algorithm works
+        char ckTemp[sizeof(uint16_t)];
+        memcpy(ckTemp, (void *) packet + sizeof(uint8_t) * 24, sizeof(uint16_t));
+        uint16_t ckCompare = *(uint16_t *) ckTemp;
+        printf("cksumSentIn: %d\n", ckCompare);
+        updateChkSum(ipHL, ipPacket);
     }
     //Check ARP cache entries each time to see if they are over 15 seconds old.
     printf("*** -> Received packet of length %d \n",len);
 
 }/* end sr_ForwardPacket */
 
+void updateChkSum(uint8_t ipHL, uint8_t *ipHeader){
+    uint16_t buf[ipHL * 2];
+    uint8_t ipHL16Bit = ipHL * 2;
+    memset(buf, 0, sizeof(uint16_t) * ipHL16Bit);
+    memcpy(buf, (void *) ipHeader, sizeof(uint16_t) * ipHL16Bit);
+    memset(&buf[5], 0, sizeof(uint16_t));
+    print_bytes(buf, sizeof(uint16_t) * ipHL16Bit);
+    uint16_t cksum = cksumAlg(buf, ipHL16Bit);
+    add16BitToMsg(ipHeader, cksum, sizeof(uint8_t) * 10);
+    print_bytes(ipHeader, sizeof(uint16_t) * ipHL16Bit);
+    printf("calculatedChk: %d\n", cksum);
+}
+
+uint8_t getIPHeaderLength(uint8_t *ipPacket) {
+    char ipHLTemp[sizeof(uint8_t)];
+    memcpy(ipHLTemp, (void *) ipPacket, sizeof(uint8_t));
+    print_bytes(ipHLTemp, sizeof(uint8_t));
+    return *(uint8_t*)ipHLTemp& 0x0F;
+}
+
 uint16_t cksumAlg(uint16_t *buf, int count) {
     register uint32_t sum = 0;
 
     while(count--) {
         sum += *buf++;
-        if (sum & 0xFFFF00000) {
+        if (sum & 0xFFFF0000) {
             sum &= 0xFFFF;
             sum++;
         }
@@ -255,6 +283,11 @@ void add16BitToMsg(unsigned char *msg, int16_t num, int index){
     int16_t tsize = num;
     msg[index] = (tsize >> 8) & 0xFF;
     msg[index + 1] = tsize & 0xFF;
+}
+
+void add8BitToMsg(unsigned char *msg, int8_t num, int index){
+    int8_t tsize = num;
+    msg[index] = tsize & 0xFF;
 }
 
 
