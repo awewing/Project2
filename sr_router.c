@@ -106,11 +106,13 @@ void sr_handlepacket(struct sr_instance* sr,
         uint8_t * ipPacket = packet + sizeof(uint8_t) * 14;
         //Is IP destination the same as the router?
         int Bit32Size = sizeof(uint32_t);
-        unsigned char ipDest[Bit32Size];
-        memset(ipDest, '\0', Bit32Size);
+        uint8_t ipDest[Bit32Size];
+        memset(ipDest, 0, Bit32Size);
         memcpy(&ipDest[0], (void *) packet + sizeof(uint8_t) * 30, Bit32Size);
+        uint32_t ipDestInt = *(uint32_t *)ipDest;
         print_bytes(ipDest, Bit32Size);
-        printf("%x\n",(iface->ip));
+        printf("ifaceIP: %d\n",(iface->ip));
+        printf("ipDest: %d\n",ipDestInt);
         //if (ipDest == iface->ip){
         //    dropPacketFlag = 1;
         //}
