@@ -30,6 +30,7 @@ uint16_t cksumAlg(uint16_t *buf, int count);
 uint8_t getIPHeaderLength(uint8_t * ipPacket);
 void updateChkSum(uint8_t ipHL, uint8_t *ipHeader);
 void add8BitToMsg(unsigned char *msg, int8_t num, int index);
+uint32_t getNextHopIP(struct sr_rt* rt, uint32_t destIP, char * gatewayInterface);
 
 /*--------------------------------------------------------------------- 
  * Method: sr_init(void)
@@ -141,6 +142,8 @@ void sr_handlepacket(struct sr_instance* sr,
         memcpy(ckTemp, (void *) packet + sizeof(uint8_t) * 24, sizeof(uint16_t));
         uint16_t ckCompare = *(uint16_t *) ckTemp;
         printf("cksumSentIn: %d\n", ckCompare);
+        char * gatewayIF = NULL;
+        uint32_t gatewayIP = getNextHopIP(sr->routing_table, ipDestInt, gatewayIF);
         updateChkSum(ipHL, ipPacket);
     }
     //Check ARP cache entries each time to see if they are over 15 seconds old.
@@ -179,6 +182,23 @@ uint16_t cksumAlg(uint16_t *buf, int count) {
         }
     }
     return ~(sum & 0xFFFF);
+}
+
+uint32_t getNextHopIP(struct sr_rt* rt, uint32_t destIP, char * gatewayInterface){
+    if (rt == NULL){
+        printf("ERROR: routing table is NULL\n\n\n\n");
+    }
+    uint32_t defaultGateway = rt->gw.s_addr;
+    gatewayInterface = rt->interface;
+    struct sr_rt* curr = rt->next;
+    while (curr != NULL){
+        if ((curr->mask.s_addr & destIP) == curr->dest.s_addr){
+            gatewayInterface = curr->interface;
+            return curr->gw.s_addr;
+        }
+        curr = curr->next;
+    }
+    return defaultGateway;
 }
 
 void parseEthernetHeader(uint8_t * packet, unsigned char* dAddress, unsigned char* sAddress, uint16_t* type){
