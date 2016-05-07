@@ -110,9 +110,10 @@ void sr_handlepacket(struct sr_instance* sr,
         memset(ipDest, 0, Bit32Size);
         memcpy(&ipDest[0], (void *) packet + sizeof(uint8_t) * 30, Bit32Size);
         uint32_t ipDestInt = *(uint32_t *)ipDest;
-        print_bytes(ipDest, Bit32Size);
         printf("ifaceIP: %d\n",(iface->ip));
+        printf("%x", (iface->ip));
         printf("ipDest: %d\n",ipDestInt);
+        print_bytes(ipDest, Bit32Size);
         //if (ipDest == iface->ip){
         //    dropPacketFlag = 1;
         //}
